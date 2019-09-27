@@ -21,7 +21,7 @@ python3 setup.py install
 Automated installation using pip3, with permissions:
 
 ```
-pip3 install git+https://github.com/sonata-nfv/tng-cli
+pip3 install tngcli
 ```
 
 ## Usage
@@ -43,7 +43,7 @@ tng-cli <subcommand> -h
 The tool needs to know which 5GTANGO Service Platform or V&V you want to interface with. For this, you should use the `-u` argument:
 
 ```
-tng-cli -u <URL_TO_SP> packages --list
+tng-cli -u <URL_TO_SP> package --list
 ```
 
 As it is cumbersome to have to specify this argument for every command, you can make it available through the `SP_PATH` env parameter:
@@ -67,7 +67,7 @@ tng-cli package --list
 To obtain a list of all running network services:
 
 ```
-tng-cli service --instances
+tng-cli service --instance
 ```
 
 To instantiate a new network service:
@@ -86,7 +86,6 @@ tng-cli policy --create <PATH_TO_DESCRIPTOR>
 
 This 5GTANGO component is published under Apache 2.0 license. Please see the LICENSE file for more details.
 
----
 #### Lead Developers
 
 The following lead developers are responsible for this repository and have admin rights. They can, for example, merge pull requests.
@@ -95,4 +94,5 @@ The following lead developers are responsible for this repository and have admin
 
 #### Feedback-Channel
 
-* Please use the GitHub issues to report bugs.
+* Mailing list [sonata-dev-list](mailto:sonata-dev@lists.atosresearch.eu)
+* Gitter room [![Gitter](https://badges.gitter.im/sonata-nfv/Lobby.svg)](https://gitter.im/sonata-nfv/Lobby?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)

@@ -45,12 +45,14 @@ LOG = logging.getLogger(__name__)
 def get_packages():
     """Returns info on all available packages.
 
-    :returns: A list. [0] is a bool with the result. [1] is a list of 
+    :returns: A tuple. [0] is a bool with the result. [1] is a list of 
         dictionaries. Each dictionary contains a package descriptor.
     """
 
     # get current list of packages
-    resp = requests.get(env.pkg_api, timeout=env.timeout)
+    resp = requests.get(env.pkg_api,
+                        timeout=env.timeout,
+                        headers=env.header)
 
     if resp.status_code != 200:
         LOG.debug("Request for packages returned with " +
@@ -68,13 +70,14 @@ def get_packages():
         LOG.debug(str(dic))
         pkg_res.append(dic)
 
+    env.set_return_header(resp.headers)
     return True, pkg_res
 
 
 def remove_all_packages():
     """Removes all packages from the catalogue.
 
-    :returns: A list. [0] is a bool with the result. [1] is a list of
+    :returns: A tuple. [0] is a bool with the result. [1] is a list of
         uuids of packages that were removed.
     """
 
@@ -95,15 +98,20 @@ def remove_package(package_uuid):
 
     :param package_uuid: uuid of the package
 
-    :returns: A list. [0] is a bool with the result. [1] is a string 
+    :returns: A tuple. [0] is a bool with the result. [1] is a string 
         with either the uuid or an error message.
     """
 
     url = env.pkg_api + '/' + package_uuid
 
-    resp = requests.delete(url, timeout=env.timeout)
+    resp = requests.delete(url,
+                           timeout=env.timeout,
+                           headers=env.header)
+
     LOG.debug(package_uuid)
     LOG.debug(str(resp.text))
+
+    env.set_return_header(resp.headers)
 
     if resp.status_code == 204:
         return True, package_uuid
@@ -111,14 +119,42 @@ def remove_package(package_uuid):
         return False, json.loads(resp.text)['error']
 
 
-def upload_package(pkg_path, url=False):
+def package_status(pkg_id):
+    """Check the status of the package uploading process. Can be used to
+    obtain the duration of the upload.
+
+    :param pkg_id: uuid of the package uploading process
+
+    :returns: A tuple. [0] is a bool with the result. [1] is a dictionary
+        containing metadata of the package.
+    """
+
+    url = env.pkg_status_api + '/' + pkg_id
+
+    resp = requests.get(url, timeout=env.timeout, headers=env.header)
+
+    pyld = json.loads(resp.text)
+    LOG.debug(pyld)
+
+    env.set_return_header(resp.headers)
+
+    if resp.status_code != 200:
+        return False, str(pyld)
+
+    return True, pyld
+
+
+def upload_package(pkg_path, url=False, return_process_uuid=False):
     """Uploads a package from file.
 
     :param pkg_path: relative path to the package that needs uploading, or url
     :param pkg_path: A bool, True if pkg_path is an url
+    :param return_process_uuid: A bool, if you want the package_process_uuid
+        returned instead of the package_uuid
 
-    :returns: A list. [0] is a bool with the result. [1] is a string containing
-        the uuid of the uploaded package, or an error message.
+    :returns: A tuple. [0] is a bool with the result. [1] is a string containing
+        either the uuid of the uploaded package, the process uuid of the package
+         or an error message.
     """
 
     if not url:
@@ -129,10 +165,13 @@ def upload_package(pkg_path, url=False):
 
     resp = requests.post(env.pkg_api,
                          files={"package": pkg},
-                         timeout=env.timeout)
+                         timeout=env.timeout,
+                         headers=env.header)
 
     pyld = json.loads(resp.text)
     LOG.debug(pyld)
+
+    env.set_return_header(resp.headers)
 
     if resp.status_code != 200:
         LOG.debug(str(pyld))
@@ -142,7 +181,7 @@ def upload_package(pkg_path, url=False):
     url = env.pkg_status_api + '/' + pkg_proc_id
 
     for i in range(10):
-        resp = requests.get(url, timeout=env.timeout)
+        resp = requests.get(url, timeout=env.timeout, headers=env.header)
         pyld = json.loads(resp.text)
         LOG.debug(pyld)
         if resp.status_code != 200:
@@ -151,6 +190,8 @@ def upload_package(pkg_path, url=False):
         if 'package_process_status' in pyld:
             status = pyld['package_process_status']
             if status == 'success':
+                if return_process_uuid:
+                    return True, pkg_proc_id
                 return True, pyld['package_id']
             elif status == 'failed':
                 error = str(pyld["package_metadata"]["error"])
@@ -169,12 +210,16 @@ def get_package(package_uuid):
 
     :param package_uuid: the uuid of the package
 
-    :returns: A list. [0] is a bool with the result. [1] is a dictionary 
+    :returns: A tuple. [0] is a bool with the result. [1] is a dictionary 
         containing a package descriptor.
     """
 
     # get package info
-    resp = requests.get(env.pkg_api + '/' + package_uuid, timeout=env.timeout)
+    resp = requests.get(env.pkg_api + '/' + package_uuid,
+                        timeout=env.timeout,
+                        headers=env.header)
+
+    env.set_return_header(resp.headers)
 
     if resp.status_code != 200:
         LOG.debug("Request for package returned with " +
@@ -188,7 +233,7 @@ def map_package_on_service(package_uuid):
 
     :param package_uuid: the uuid of the package
 
-    :returns: A list. [0] is a bool with the result. [1] is a string 
+    :returns: A tuple. [0] is a bool with the result. [1] is a string 
         containing a nsd uuid.
     """
 

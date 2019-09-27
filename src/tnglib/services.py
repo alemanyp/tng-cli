@@ -44,12 +44,16 @@ LOG = logging.getLogger(__name__)
 def get_service_descriptors():
     """Returns info on all available service descriptors.
 
-    :returns: A list. [0] is a bool with the result. [1] is a list of 
+    :returns: A tuple. [0] is a bool with the result. [1] is a list of 
         dictionaries. Each dictionary contains an nsd.
     """
 
     # get current list of service descriptors
-    resp = requests.get(env.service_descriptor_api, timeout=env.timeout)
+    resp = requests.get(env.service_descriptor_api,
+                        timeout=env.timeout,
+                        headers=env.header)
+
+    env.set_return_header(resp.headers)
 
     if resp.status_code != 200:
         LOG.debug("Request for service descriptors returned with " +
@@ -60,6 +64,8 @@ def get_service_descriptors():
 
     services_res = []
     for service in services:
+        if service['platform'] != '5gtango':
+            continue
         dic = {'descriptor_uuid': service['uuid'],
                'name': service['nsd']['name'],
                'version': service['nsd']['version'],
@@ -75,14 +81,17 @@ def get_service_descriptor(service_descriptor_uuid):
 
     :param service_descriptor_uuid: uuid of the nsd.
 
-    :returns: A list. [0] is a bool with the result. [1] is a dictionary 
+    :returns: A tuple. [0] is a bool with the result. [1] is a dictionary 
         containing an nsd.
     """
 
     # get service info
     url = env.service_descriptor_api + '/' + service_descriptor_uuid
     resp = requests.get(url,
-                        timeout=env.timeout)
+                        timeout=env.timeout,
+                        headers=env.header)
+
+    env.set_return_header(resp.headers)
 
     if resp.status_code != 200:
         LOG.debug("Request for service descriptor returned with " +
@@ -95,12 +104,16 @@ def get_service_descriptor(service_descriptor_uuid):
 def get_service_instances():
     """Returns info on all available service instances.
 
-    :returns: A list. [0] is a bool with the result. [1] is a list of 
+    :returns: A tuple. [0] is a bool with the result. [1] is a list of 
         dictionaries. Each dictionary contains an nsr.
     """
 
     # get current list of service instances
-    resp = requests.get(env.service_instance_api, timeout=env.timeout)
+    resp = requests.get(env.service_instance_api,
+                        timeout=env.timeout,
+                        headers=env.header)
+
+    env.set_return_header(resp.headers)
 
     if resp.status_code != 200:
         LOG.debug("Request for service instances returned with " +
@@ -130,14 +143,17 @@ def get_service_instance(service_instance_uuid):
 
     :param service_instance_uuid: uid of nsr.
 
-    :returns: A list. [0] is a bool with the result. [1] is a dictionary 
+    :returns: A tuple. [0] is a bool with the result. [1] is a dictionary 
         containing an nsr.
     """
 
     # get service instance info
     url = env.service_instance_api + '/' + service_instance_uuid
     resp = requests.get(url,
-                        timeout=env.timeout)
+                        timeout=env.timeout,
+                        headers=env.header)
+
+    env.set_return_header(resp.headers)
 
     if resp.status_code != 200:
         LOG.debug("Request for service instance returned with " +
@@ -145,3 +161,29 @@ def get_service_instance(service_instance_uuid):
         return False, json.loads(resp.text)
 
     return True, json.loads(resp.text)
+
+def get_service_vnfrs(service_instance_uuid):
+    """Returns the number of a vnf records of a specific network service.
+
+    :param service_instance_uuid: uid of nsr.
+
+    :returns: A tuple. [0] is a bool with the result. [1] is a dictionary 
+        containing an nsr.
+    """
+
+    # get service instance info
+    url = env.service_instance_api + '/' + service_instance_uuid
+    resp = requests.get(url,
+                        timeout=env.timeout,
+                        headers=env.header)
+
+    env.set_return_header(resp.headers)
+    
+    response_payload = json.loads(resp.text)
+
+    if resp.status_code != 200:
+        LOG.debug("Request for service instance returned with " +
+                  (str(resp.status_code)))
+        return False, json.loads(resp.text)
+
+    return True, len(response_payload["network_functions"])

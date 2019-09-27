@@ -35,7 +35,10 @@ import argparse
 import tnglib
 import yaml
 import os
+import json
 import logging
+import getpass
+import time
 
 
 LOG = logging.getLogger(__name__)
@@ -84,6 +87,34 @@ def dispatch(args):
     if not tnglib.sp_health_check():
         print("Couldn't reach SP at \"" + tnglib.get_sp_path() + "\"")
         exit(1)
+
+    # Check if token exists
+    token = tnglib.get_token()
+
+    if token[0]:
+        if tnglib.is_token_valid():
+           # pass token into headers
+           tnglib.add_token_to_header(token[1])
+        else:
+            if args.subparser_name != 'login':
+                print("Token is outdated. Obtain a new token through tng-cli login")
+                exit(1)
+
+    # login subcommand
+    if args.subparser_name == 'login':
+        # login needs exactly one argument
+        if args.username:
+            pswd = getpass.getpass('Password:')
+            res, mes = tnglib.update_token(args.username, pswd, True)
+            if not res:
+                print(mes)
+            exit(not res)
+        else:
+            msg = "Missing arguments for tng-cli login, " \
+                  "-u/--username is required."
+            print(msg)
+            exit(1)
+
 
     # packages subcommand
     if args.subparser_name == 'package':
@@ -147,14 +178,11 @@ def dispatch(args):
             res, mes = tnglib.get_request(args.get)
             form_print(mes)
             exit(not res)
-        elif args.scale_out:
-            res, mes = tnglib.service_scale_out(args.instance_uuid, args.vnfd_uuid, args.num_instances, args.vim_uuid)
-            form_print(mes)
+
+        if bool(args.watch):
+            res = watch_request(args.watch)
             exit(not res)
-        elif args.scale_in:
-            res, mes = tnglib.service_scale_in(args.instance_uuid, args.vnf_uuid, args.vnfd_uuid, args.num_instances)
-            form_print(mes)
-            exit(not res)
+
         else:
             res, mes = tnglib.get_requests()
             order = ['request_uuid',
@@ -164,14 +192,98 @@ def dispatch(args):
                      'instance_uuid']
             form_print(mes, order)
             exit(not res)
+    
+    #monitor subcommand
+    elif args.subparser_name == 'monitor':
+        sel_args = [args.target_list, args.service_list, args.metric_list, 
+                    args.vnf_uuid, args.vdu_uuid, args.metric_name,
+                    args.vnv_tests, args.service_uuid, args.remove_service]
+        arg_sum = len([x for x in sel_args if x])
+        if arg_sum == 0:
+            msg = "Missing arguments for tng-cli monitor. " \
+                  "Type tng-cli monitor -h"
+            print(msg)
+            exit(1)
 
+        if arg_sum > 3:
+            msg = "Too many arguments for subcommand monitor. " \
+                  "Type tng-cli monitor -h"
+            print(msg)
+            exit(1)
+
+        if args.remove_service:
+            res, mes = tnglib.stop_monitoring(args.remove_service)
+            order = ['srv_uuid']
+            form_print(mes, order)
+            exit(not res)
+
+        if args.vnv_tests:
+            if args.service_uuid:
+                res, mes = tnglib.get_vnv_tests(args.service_uuid)
+                for m in mes:
+                    if 'data' in m:
+                        cwd = os.getcwd()
+                        fn = cwd+'/'+m['srv_uuid']+'.yaml'
+                        m['datafile']=m['srv_uuid']+'.yaml'
+                        DataFile = open(fn, 'w')
+                        DataFile.write(yaml.dump(m['data'], indent=4))
+                        DataFile.close()
+                order = ['test_uuid', 'srv_uuid','started','terminated','datafile']
+                form_print(mes, order)
+
+            else:
+                res, mes = tnglib.get_vnv_tests(None)
+                order = ['test_uuid', 'srv_uuid', 'started', 'terminated']
+                form_print(mes, order)
+
+            exit(not res)
+
+
+        if args.target_list:
+            res, mes = tnglib.get_prometheus_targets()
+            order = ['target', 'endpoint']
+            form_print(mes, order)
+            exit(not res)
+
+        if args.service_list:
+            res, mes = tnglib.get_services(args.service_list)
+            order = ['vnf_uuid', 'vdu_uuid']
+            form_print(mes, order)
+            exit(not res)
+            
+        if args.metric_name:
+            res, mes = tnglib.get_metric(args.metric_name)
+            order = ['job','instance','value']
+            form_print(mes, order)
+            exit(not res)
+
+        if args.metric_list:
+            if not args.vnf_uuid:
+                msg = "VNF uuid is missing " \
+                      "Type tng-cli monitor -h"
+                print(msg)
+                exit(1)
+            if not args.vdu_uuid:
+                msg = "VDU uuid is missing " \
+                      "Type tng-cli monitor -h"
+                print(msg)
+                exit(1)
+
+            res, mes = tnglib.get_metrics(args.vnf_uuid, args.vdu_uuid)
+            order = ['metric_name',]
+            form_print(mes, order)
+            exit(not res)
+    
     # services subcommand
     elif args.subparser_name == 'service':
         # services needs exactly one argument
         sel_args = [args.descriptor,
                     args.instance,
                     args.instantiate,
-                    args.terminate]
+                    args.terminate,
+                    args.scale_out,
+                    args.scale_in,
+                    args.migrate]
         arg_sum = len([x for x in sel_args if x])
         if arg_sum == 0:
             msg = "Missing arguments for subcommand service. " \
@@ -216,18 +328,94 @@ def dispatch(args):
             exit(not res)
 
         if bool(args.instantiate):
+            if args.params:
+                try:
+                    params = json.loads(args.params)
+                    if not isinstance(params, dict):
+                        print(args.params + " does not resemble a dictionary")
+                        exit(1)
+                except:
+                    print("\"" + args.params + "\" is not correctly formatted")
+                    exit(1)
+            elif args.params_file:
+                try:
+                    params = yaml.load(open(args.params_file, 'r'))
+                    if not isinstance(params, dict):
+                        print("File does not contain a dictionary")
+                        exit(1)
+                except:
+                    print("File cannot be parsed as yaml")
+                    exit(1)
+
+            else:
+                params = {}
+
             if bool(args.sla):
                 res, mes = tnglib.service_instantiate(args.instantiate,
-                                                      args.sla)
+                                                      args.sla,
+                                                      params=params)
             else:
-                res, mes = tnglib.service_instantiate(args.instantiate)
+                res, mes = tnglib.service_instantiate(args.instantiate,
+                                                      params=params)
 
-            form_print(mes)
+            if args.watch:
+                res = watch_request(mes)
+            else:
+                form_print(mes)
             exit(not res)
 
         if bool(args.terminate):
             res, mes = tnglib.service_terminate(args.terminate)
-            form_print(mes)
+            if args.watch:
+                res = watch_request(mes)
+            else:
+                form_print(mes)
+            exit(not res)
+
+        if bool(args.scale_out):
+            if not bool(args.vnfd_uuid):
+                print(" --vnfd_uuid is needed with --scale_out")
+                exit(1)
+
+            res, mes = tnglib.service_scale_out(args.scale_out,
+                                                args.vnfd_uuid,
+                                                args.num_instances,
+                                                args.vim_uuid)
+            if args.watch:
+                res = watch_request(mes)
+            else:
+                form_print(mes)
+            exit(not res)
+
+        if bool(args.scale_in):
+            if not (bool(args.vnfd_uuid) or bool(args.vnf_uuid)):
+                msg = " --either --vnfd_uuid or --vnf_uuid is " \
+                      "needed with --scale_in"
+                print(msg)
+                exit(1)
+
+            res, mes = tnglib.service_scale_in(args.scale_in,
+                                               args.vnf_uuid,
+                                               args.vnfd_uuid,
+                                               args.num_instances)
+            if args.watch:
+                res = watch_request(mes)
+            else:
+                form_print(mes)
+            exit(not res)
+
+        if bool(args.migrate):
+            if not bool(args.vnf_uuid and args.vim_uuid):
+                print(" --vnf_uuid and --vim_uuidis needed with --migrate")
+                exit(1)
+
+            res, mes = tnglib.service_migrate(args.migrate,
+                                               args.vnf_uuid,
+                                               args.vim_uuid)
+            if args.watch:
+                res = watch_request(mes)
+            else:
+                form_print(mes)
             exit(not res)
 
     # functions subcommand
@@ -639,8 +827,8 @@ def parse_args(args):
     """
     parser = argparse.ArgumentParser(description="5GTANGO tng-cli tool")
 
-    parser.add_argument('-u',
-                        '--url',
+    parser.add_argument('-e',
+                        '--env',
                         dest='sp_url',
                         metavar="URL",
                         default=None,
@@ -676,6 +864,17 @@ def parse_args(args):
                                          help='actions related to test-plans')
     parser_results = subparsers.add_parser('result',
                                          help='actions related to results')
+    parser_mon = subparsers.add_parser('monitor',
+                                         help='actions related to monitoring')
+    parser_login = subparsers.add_parser('login',
+                                         help='actions related to login')
+
+    # login sub arguments
+    parser_login.add_argument('-u',
+                              '--username',
+                              required=True,
+                              metavar="USERNAME",
+                              help='provide username')
 
     # packages sub arguments
     parser_pkg.add_argument('-l',
@@ -721,47 +920,12 @@ def parse_args(args):
                             default=False,
                             help='Returns detailed info on specified request')
 
-    parser_req.add_argument('--scale_in',
-                            action='store_true',
+    parser_req.add_argument('-w',
+                            '--watch',
+                            metavar='UUID',
                             required=False,
                             default=False,
-                            help='Scale in a service')
-
-    parser_req.add_argument('--scale_out',
-                            action='store_true',
-                            required=False,
-                            default=False,
-                            help='Scale out a service')
-
-    parser_req.add_argument('--vnfd_uuid',
-                            metavar='vnfd_uuid',
-                            required=False,
-                            default=False,
-                            help='Specify the vnf descriptor uuid')
-
-    parser_req.add_argument('--vnf_uuid',
-                            metavar='vnfd_uuid',
-                            required=False,
-                            default=False,
-                            help='Specify the vnf instance uuid')
-
-    parser_req.add_argument('--instance_uuid',
-                            metavar='instance_uuid',
-                            required=False,
-                            default=False,
-                            help='Specify the service uuid to be scaled')
-
-    parser_req.add_argument('--num_instances',
-                            metavar='num_instances',
-                            required=False,
-                            default=False,
-                            help='Number of instances to add or remove to the service')
-
-    parser_req.add_argument('--vim_uuid',
-                            metavar='vim_uuid',
-                            required=False,
-                            default=False,
-                            help='VIM uuid to place the scaled service')
+                            help='Watch the request progress')
 
     # services sub arguments
     parser_ser.add_argument('--descriptor',
@@ -803,6 +967,80 @@ def parse_args(args):
     parser_ser.add_argument('-s',
                             '--sla',
                             metavar='SLA UUID',
+                            required=False,
+                            default=False,
+                            help=help_mes)
+
+    help_mes = 'Scale in a service, requires either --vnf_uuid or --vnfd_uuid'
+    parser_ser.add_argument('--scale_in',
+                            metavar='INSTANCE UUID',
+                            required=False,
+                            default=False,
+                            help=help_mes)
+
+    help_mes = 'Scale out a service, requires --vnfd_uuid'
+    parser_ser.add_argument('--scale_out',
+                            metavar='INSTANCE UUID',
+                            required=False,
+                            default=False,
+                            help=help_mes)
+
+    help_mes = 'Migrate a service, requires --vnf_uuid and --vim_uuid'
+    parser_ser.add_argument('--migrate',
+                            metavar='INSTANCE UUID',
+                            required=False,
+                            default=False,
+                            help=help_mes)
+
+    help_mes = 'Specify the vnf descriptor uuid, used with --scale_out '\
+               ' and --scale_in'
+    parser_ser.add_argument('--vnfd_uuid',
+                            metavar='VNFD UUID',
+                            required=False,
+                            default=False,
+                            help=help_mes)
+
+    help_mes = 'Specify the vnf instance id, with --scale_in or --migrate'
+    parser_ser.add_argument('--vnf_uuid',
+                            metavar='VNF UUID',
+                            required=False,
+                            default=False,
+                            help=help_mes)
+
+    help_mes = 'Number of instances to add/remove when scaling'
+    parser_ser.add_argument('--num_instances',
+                            metavar='NUMBER OF INSTANCES',
+                            required=False,
+                            default=False,
+                            help=help_mes)
+
+    help_mes = 'Specify VIM uuid, only with --scale_out or --migrate'
+    parser_ser.add_argument('--vim_uuid',
+                            metavar='VIM UUID',
+                            required=False,
+                            default=False,
+                            help=help_mes)
+
+    help_mes = 'Follow a service request (instantiating, terminating, scaling)'
+    parser_ser.add_argument('-w',
+                            '--watch',
+                            action='store_true',
+                            required=False,
+                            default=False,
+                            help=help_mes)
+
+    help_mes = 'json string of object with key-value pairs to be added ' \
+               'as envs to CNFs , only with --instantiate'
+    parser_ser.add_argument('--params',
+                            metavar='PARAMS',
+                            required=False,
+                            default=False,
+                            help=help_mes)
+
+    help_mes = 'path to yaml file that contains key value params, ' \
+               'only with --instantiate'
+    parser_ser.add_argument('--params_file',
+                            metavar='PARAMS FILE',
                             required=False,
                             default=False,
                             help=help_mes)
@@ -1084,6 +1322,78 @@ def parse_args(args):
                             required=False,
                             default=False,
                             help='Only with --attach. Attach policy to an sla')
+    # monitoring sub arguments
+    help_mes = 'Get list of monitoring endpoints'
+    parser_mon.add_argument('-trl',
+                            '--target-list',
+                            action='store_true',
+                            required=False,
+                            default=False,
+                            help=help_mes)
+
+    help_mes = 'Get active monitoring services'
+    parser_mon.add_argument('-srv',
+                            '--service-list',
+                            metavar='SERVICE UUID',
+                            required=False,
+                            default=False,
+                            help=help_mes)
+
+    help_mes = 'Only with --metric-list. Get metric list per vnf/vdu'
+    parser_mon.add_argument('-vnf',
+                            '--vnf-uuid',
+                            metavar='FUNCTION UUID',
+                            required=False,
+                            default=False,
+                            help=help_mes)
+
+    help_mes = 'Only with --metric-list. Get metric list per vnf/vdu'
+    parser_mon.add_argument('-vdu',
+                            '--vdu-uuid',
+                            metavar='VDU UUID',
+                            required=False,
+                            default=False,
+                            help=help_mes)
+
+    help_mes = 'Get metrics list'
+    parser_mon.add_argument('-mtr',
+                            '--metric-list',
+                            action='store_true',
+                            required=False,
+                            default=False,
+                            help=help_mes)
+
+    help_mes = 'Get last value of metric'
+    parser_mon.add_argument('-mtn',
+                            '--metric-name',
+                            metavar='METRIC NAME',
+                            required=False,
+                            default=False,
+                            help=help_mes)
+
+    help_mes = 'Get stored tests list. (Available only in VnV Platform) '
+    parser_mon.add_argument('-ptest',
+                            '--vnv-tests',
+                            action='store_true',
+                            required=False,
+                            default=False,
+                            help=help_mes)
+
+    help_mes = 'Only with --vnv-tests. Get stored montiring data'
+    parser_mon.add_argument('-nst',
+                            '--service-uuid',
+                            metavar='SERVICE UUID',
+                            required=False,
+                            default=False,
+                            help=help_mes)
+
+    help_mes = 'Stop collecting data per service.'
+    parser_mon.add_argument('-rm',
+                            '--remove-service',
+                            metavar='SERVICE UUID',
+                            required=False,
+                            default=False,
+                            help=help_mes)
 
     # tests sub arguments
     parser_tests.add_argument('-g',
@@ -1110,7 +1420,49 @@ def parse_args(args):
     return parser.parse_args(args)
 
 
-def form_print(data, order=None):
+def watch_request(request_uuid):
+    """
+    Follow a request
+    """
+
+    order = ['request_uuid',
+             'request_type',
+             'status',
+             'created_at']
+
+    res, mes = tnglib.get_request(request_uuid)
+
+    if (not res):
+        return res
+
+    output = [{'request_uuid': request_uuid,
+               'request_type': mes['request_type'],
+               'status': mes['status'],
+               'created_at': mes['created_at']}]
+
+    form_print(output, order)
+    status = mes['status']
+
+    while status not in ['READY', 'ERROR']:
+        time.sleep(5)
+        res, mes = tnglib.get_request(request_uuid)
+        if (not res):
+            return res
+
+        output = [{'request_uuid': request_uuid,
+                   'request_type': mes['request_type'],
+                   'status': mes['status'],
+                   'created_at': mes['created_at']}]
+
+        form_print(output, order, update=True)
+        status = mes['status']
+
+    if status == 'ERROR':
+        return False
+
+    return True
+
+def form_print(data, order=None, update=False):
     """
     Formatted printing
     """
@@ -1122,22 +1474,23 @@ def form_print(data, order=None):
                 return
 
         # print header
-        header = ''
-        for key in order:
-            if 'uuid' in key:
-                new_seg = key.replace('_', ' ').upper().ljust(40)
-            # elif key == 'version':
-            #     new_seg = key.upper().ljust(10)
-            else:
-                new_seg = key.replace('_', ' ').upper().ljust(20)
-            header = header + new_seg
-        print(header)
+        if not update:
+            header = ''
+            for key in order:
+                if ('uuid' in key) or ('metric' in key):
+                    new_seg = key.replace('_', ' ').upper().ljust(40)
+                # elif key == 'version':
+                #     new_seg = key.upper().ljust(10)
+                else:
+                    new_seg = key.replace('_', ' ').upper().ljust(20)
+                header = header + new_seg
+            print(header)
 
         # print content
         for data_seg in data:
             line = ''
             for key in order:
-                if 'uuid' in key:
+                if ('uuid' in key) or ('metric' in key):
                     new_seg = data_seg[key].ljust(40)
                 elif key in ['created_at', 'updated_at', 'violation_time']:
                     new_seg = data_seg[key][:16].replace('T', ' ').ljust(20)

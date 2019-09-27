@@ -45,13 +45,17 @@ def get_requests():
     """Returns info on all requests.
 
 
-    :returns: A list. [0] is a bool with the result. [1] is a list of
+    :returns: A tuple. [0] is a bool with the result. [1] is a list of
         dictionaries, each containing a request.
 
     """
 
     # get current list of requests
-    resp = requests.get(env.request_api, timeout=env.timeout)
+    resp = requests.get(env.request_api,
+                        timeout=env.timeout,
+                        headers=env.header)
+
+    env.set_return_header(resp.headers)
 
     if resp.status_code != 200:
         LOG.debug("Request for requests returned with " +
@@ -82,14 +86,17 @@ def get_request(request_uuid):
     """Returns info on a specific request.
 
     :param request_uuid: A string. The uuid of the request.
-    :returns: A list. [0] is a bool with the result. [1] is a dictionary
+    :returns: A tuple. [0] is a bool with the result. [1] is a dictionary
         containing the request.
 
     """
 
     # get request info
     resp = requests.get(env.request_api + '/' + request_uuid,
-                        timeout=env.timeout)
+                        timeout=env.timeout,
+                        headers=env.header)
+
+    env.set_return_header(resp.headers)
 
     if resp.status_code != 200:
         LOG.debug("Request for request returned with " +
@@ -100,13 +107,31 @@ def get_request(request_uuid):
     return True, json.loads(resp.text)
 
 
-def service_instantiate(service_uuid, sla_uuid=None):
+def service_instantiate(service_uuid, sla_uuid=None, mapping=None, params=None):
     """Makes a request to instantiate a service.
 
     :param service_uuid: A string. The uuid of the service.
     :param sla_uuid: A string (Default value = None). The uuid of the SLA.
-    :returns: A list. [0] is a bool with the result. [1] is a string containing
-        the uuid of the instantiated service.
+    :param input_mapping: dictionary with two keys: vnfs and vls. Both keys
+        contain a list. vnf list elements are dictionaries with two keys: vnf_id
+        and vim_id. vls list elements are dictionaries with three keys: vl_id,
+        external_net and vim_id.
+        ---
+        network_functions:
+          - vnf_id: <foo>
+            vim_id: <bar>
+          - vnf_id: <foo2>
+            vim_id: <bar2>
+        virtual_links:
+          - vl_id: <foo>
+            vim_id: <bar>
+            external_net: <foo.bar>
+          - vl_id: <foo2>
+            vim_id: <bar2>
+            external_net: <foo.bar2>
+    :param params: A dictionary contain key value pairs as params input.
+    :returns: A tuple. [0] is a bool with the result. [1] is a string containing
+        the uuid of the request.
 
     """
     
@@ -116,6 +141,12 @@ def service_instantiate(service_uuid, sla_uuid=None):
     if sla_uuid:
         data['sla_id'] = sla_uuid
 
+    if mapping:
+        data['mapping'] = mapping
+
+    if params:
+        data['params'] = params
+
     return _post_request(data)
 
 
@@ -123,7 +154,7 @@ def service_terminate(instance_uuid):
     """Makes a request to terminate a service.
 
     :param instance_uuid: A string. The uuid of the instance.
-    :returns: A list. [0] is a bool with the result. [1] is a string containing
+    :returns: A tuple. [0] is a bool with the result. [1] is a string containing
         the uuid of the terminated instance.
 
     """
@@ -142,7 +173,7 @@ def slice_instantiate(slice_template_uuid, name=None, description=None):
         instance.
     :param description: A string (Default value = None). A description 
         for the slice template
-    :returns: A list. [0] is a bool with the result. [1] is a string containing
+    :returns: A tuple. [0] is a bool with the result. [1] is a string containing
         the uuid of the instantiated slice.
 
     """
@@ -167,7 +198,7 @@ def slice_terminate(instance_uuid):
     """Makes a request to terminate a slice.
 
     :param instance_uuid: A string. The uuid of the slice instance.
-    :returns: A list. [0] is a bool with the result. [1] is a string containing
+    :returns: A tuple. [0] is a bool with the result. [1] is a string containing
         the uuid of the terminated slice instance.
 
     """
@@ -184,7 +215,7 @@ def service_scale_out(instance_uuid, vnfd_uuid, number_inst=1, vim_uuid=None):
     :param instance_uuid: A string. The uuid of the service instance.
     :param vnfd_uuid: A string. the uuid of the vnf descriptor to scale.
     :param number_inst: An integer. Number of required extra intances.
-    :returns: A list. [0] is a bool with the result. [1] is a string containing
+    :returns: A tuple. [0] is a bool with the result. [1] is a string containing
         the uuid of the request.
 
     """
@@ -214,7 +245,7 @@ def service_scale_in(instance_uuid, vnf_uuid=None, vnfd_uuid=None, number_inst=1
     :param vnf_uuid: A string. Contains the uuid of a VNF instance.
     :param number_inst: An integer. Number of required intances to scale in.
         Only when vnfd_uuid is present.
-    :returns: A list. [0] is a bool with the result. [1] is a string containing
+    :returns: A tuple. [0] is a bool with the result. [1] is a string containing
         the uuid of the request.
 
     """
@@ -236,12 +267,36 @@ def service_scale_in(instance_uuid, vnf_uuid=None, vnfd_uuid=None, number_inst=1
 
     return _post_request(data)
 
+def service_migrate(instance_uuid, vnf_uuid, vim_uuid):
+    """
+    Makes a request to migrate a vnf in a service.
+
+    :param instance_uuid: A string. The uuid of the service instance.
+    :param vnf_uuid: A string. the uuid of the vnf that should be migrated.
+    :param vim_uuid: A string. The uuid of the vim that the vnf should be 
+        migrated towards.
+    :returns: A tuple. [0] is a bool with the result. [1] is a string containing
+        the uuid of the request.
+
+    """
+    data = {
+            "instance_uuid": instance_uuid,
+            "request_type": "MIGRATE_FUNCTION",
+            "vnf_uuid": vnf_uuid,
+            "vim_uuid": vim_uuid
+        }
+
+    return _post_request(data)
+
 def _post_request(data):
     """ Generic request maker. """
 
     resp = requests.post(env.request_api,
                          json=data,
-                         timeout=env.timeout)
+                         timeout=env.timeout,
+                         headers=env.header)
+
+    env.set_return_header(resp.headers)
 
     if resp.status_code != 201:
         LOG.debug("Request returned with " +

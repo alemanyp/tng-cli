@@ -44,7 +44,7 @@ LOG = logging.getLogger(__name__)
 def get_policies():
     """Returns info on all available policiy descriptors.
 
-    :returns: A list. [0] is a bool with the result. [1] is a list of 
+    :returns: A tuple. [0] is a bool with the result. [1] is a list of 
         dictionaries. Each dictionary contains a policy descriptor.
     """
 
@@ -75,7 +75,7 @@ def get_policy(policy_uuid):
 
     :param policy_uuid: uuid of a policy descriptor.
 
-    :returns: A list. [0] is a bool with the result. [1] is a dictionary 
+    :returns: A tuple. [0] is a bool with the result. [1] is a dictionary 
         containg a policy descriptor.
     """
 
@@ -96,7 +96,7 @@ def create_policy(path):
 
     :param path: relative path where policy descriptor is stored.
 
-    :returns: A list. [0] is a bool with the result. [1] is a string containing
+    :returns: A tuple. [0] is a bool with the result. [1] is a string containing
         the uuid of the uploaded policy descriptor.
     """
 
@@ -120,9 +120,12 @@ def create_policy(path):
         error = resp.text
         return False, error
 
-    uuid = json.loads((json.loads(resp.text)['returnobject']))['uuid']
+    #uuid = json.loads((json.loads(resp.text)['returnobject']))['uuid']
 
-    return True, uuid
+    #return True, uuid
+    message = json.loads(resp.text)['uuid']
+
+    return True, message
 
 
 def delete_policy(policy_uuid):
@@ -130,7 +133,7 @@ def delete_policy(policy_uuid):
 
     :param policy_uuid: uuid of a policy descriptor.
 
-    :returns: A list. [0] is a bool with the result. [1] is a string containing
+    :returns: A tuple. [0] is a bool with the result. [1] is a string containing
         the uuid of the terminated policy descriptor.
     """
 
@@ -145,6 +148,31 @@ def delete_policy(policy_uuid):
     else:
         return False, json.loads(resp.text)
 
+def define_policy_as_default(policy_uuid,service_uuid):
+    """Define a Runtime Policy as default.
+
+    :param policy_uuid: uuid of a policy descriptor.
+
+    :returns: A tuple. [0] is a bool with the result. [1] is a string containing
+        the uuid of the terminated policy descriptor.
+    """
+
+    url = env.policy_api + '/default/' + policy_uuid
+
+    data = {'nsid': service_uuid, 'defaultPolicy': True}
+    resp = requests.patch(url,
+                          json=data,
+                          timeout=env.timeout)
+  
+    if resp.status_code != 200:
+        LOG.debug("Request returned with " + (str(resp.status_code)))
+        error = resp.text
+        return False, error
+
+    message = json.loads(resp.text)['message']
+
+    return True, message
+
 
 def attach_policy(policy_uuid, service_uuid, sla_uuid):
     """Attaches a policy to a service and SLA.
@@ -153,7 +181,7 @@ def attach_policy(policy_uuid, service_uuid, sla_uuid):
     :param service_uuid: uuid of a network service.
     :param sla_uuid: uuid of an SLA.
 
-    :returns: A list. [0] is a bool with the result. [1] is a string indicating
+    :returns: A tuple. [0] is a bool with the result. [1] is a string indicating
         the result.
     """
 
@@ -170,3 +198,46 @@ def attach_policy(policy_uuid, service_uuid, sla_uuid):
     message = json.loads(resp.text)['message']
 
     return True, message
+
+def deactivate_policy(nsr_id):
+    """Deactivates an enforced policy.
+
+    :param nsr_id: uuid of a network service record.
+
+    :returns: A tuple. [0] is a bool with the result. [1] is a string containing
+        a message.
+    """
+
+    url = env.policy_api + '/deactivate/' + nsr_id
+
+    resp = requests.get(url, timeout=env.timeout)
+    LOG.debug(nsr_id)
+    LOG.debug(str(resp.text))
+
+    if resp.status_code == 200:
+        return True, json.loads(resp.text)
+    else:
+        return False, json.loads(resp.text)
+
+def get_policy_action(nsr_id):
+    """Checks if exists any policy action generated for the given nsr_id.
+
+    :param nsr_id: uuid of a network service record.
+
+    :returns: A tuple. [0] is a bool with the result. [1] is a string containing
+        a message.
+    """
+
+    url = env.policy_api + '/actions' 
+
+    resp = requests.get(url, timeout=env.timeout)
+    LOG.debug(nsr_id)
+    LOG.debug(str(resp.text))
+    
+    actions_string = str(resp.text)
+
+    if resp.status_code == 200:
+        return True, nsr_id in actions_string
+    else:
+        return False, json.loads(resp.text)
+

@@ -55,13 +55,16 @@ def create_sla_template(templateName, nsd_uuid, expireDate,
     :param expireDate: DD/MM/YYYY expiration date.
     :param guaranteeId: id of the SLA guarantee.
     :param template_initiator: the one who creates the sla template e.g. Uprc.
-    :param provider_name: the vendor on behalf of whom the sla template is generated e.g. Telefonica.
+    :param provider_name: the vendor on behalf of whom the sla template is 
+        generated e.g. Telefonica.
     :param dflavour_name: the mapped deployment flavor.
-    :param service_licence_type: the selected license type (public|trial|private).
-    :param allowed_service_instances: the allowed ns instances based on the license.
+    :param service_licence_type: the selected license 
+        type (public|trial|private).
+    :param allowed_service_instances: the allowed ns instances based on 
+        the license.
     :param service_licence_expiration_date: DD/MM/YYYY license expiration date.
 
-    :returns: A list. [0] is a bool with the result. [1] is a string containing
+    :returns: A tuple. [0] is a bool with the result. [1] is a string containing
         the uuid of the created SLA template.
     """
 
@@ -79,7 +82,10 @@ def create_sla_template(templateName, nsd_uuid, expireDate,
 
     resp = requests.post(env.sl_templates_api,
                          data=data,
-                         timeout=env.timeout)
+                         timeout=env.timeout,
+                         headers=env.header)
+
+    env.set_return_header(resp.headers)
 
     if resp.status_code != 201:
         LOG.debug("Request returned with " + (str(resp.status_code)))
@@ -94,12 +100,16 @@ def create_sla_template(templateName, nsd_uuid, expireDate,
 def get_sla_templates():
     """Returns info on all available SLA templates.
 
-    :returns: A list. [0] is a bool with the result. [1] is a list of 
+    :returns: A tuple. [0] is a bool with the result. [1] is a list of 
         dictionaries. Each dictionary contains an SLA template.
     """
 
     # get current list of templates
-    resp = requests.get(env.sl_templates_api, timeout=env.timeout)
+    resp = requests.get(env.sl_templates_api,
+                        timeout=env.timeout,
+                        headers=env.header)
+
+    env.set_return_header(resp.headers)
 
     if resp.status_code != 200:
         LOG.debug("Request returned with " + (str(resp.status_code)))
@@ -127,13 +137,15 @@ def get_sla_template(sla_uuid):
 
     :param sla_uuid: uuid of an SLA template.
 
-    :returns: A list. [0] is a bool with the result. [1] is a dictionary 
+    :returns: A tuple. [0] is a bool with the result. [1] is a dictionary 
         containg an SLA template.
     """
 
     # get current list of templates
     url = env.sl_templates_api + '/' + sla_uuid
-    resp = requests.get(url, timeout=env.timeout)
+    resp = requests.get(url, timeout=env.timeout, headers=env.header)
+
+    env.set_return_header(resp.headers)
 
     if resp.status_code != 200:
         LOG.debug("Request returned with " + (str(resp.status_code)))
@@ -150,15 +162,17 @@ def delete_sla_template(sla_template_uuid):
 
     :param sla_template_uuid: uuid of an SLA template.
 
-    :returns: A list. [0] is a bool with the result. [1] is a string containing
+    :returns: A tuple. [0] is a bool with the result. [1] is a string containing
         the uuid of the terminated SLA.
     """
 
     url = env.sl_templates_api + '/' + sla_template_uuid
 
-    resp = requests.delete(url, timeout=env.timeout)
+    resp = requests.delete(url, timeout=env.timeout, headers=env.header)
     LOG.debug(sla_template_uuid)
     LOG.debug(str(resp.text))
+
+    env.set_return_header(resp.headers)
 
     if resp.status_code == 200:
         return True, sla_template_uuid
@@ -169,12 +183,16 @@ def delete_sla_template(sla_template_uuid):
 def get_sla_guarantees():
     """Returns info on all available SLA guarantees.
 
-    :returns: A list. [0] is a bool with the result. [1] is a list of 
+    :returns: A tuple. [0] is a bool with the result. [1] is a list of 
         dictionaries. Each dictionary contains an SLA guarantee.
     """
 
     # get current list of templates
-    resp = requests.get(env.sl_guarantees_api, timeout=env.timeout)
+    resp = requests.get(env.sl_guarantees_api,
+                        timeout=env.timeout,
+                        headers=env.header)
+
+    env.set_return_header(resp.headers)
 
     if resp.status_code != 200:
         LOG.debug("Request returned with " + (str(resp.status_code)))
@@ -201,7 +219,7 @@ def get_agreements(nsi_uuid=None):
 
     :param nsi_uuid:  (Default value = None) uuid of a service instance.
 
-    :returns: A list. [0] is a bool with the result. [1] is a list of 
+    :returns: A tuple. [0] is a bool with the result. [1] is a list of 
         dictonaries. Each dictionary contains an SLA agreement.
     """
 
@@ -210,7 +228,9 @@ def get_agreements(nsi_uuid=None):
         url = env.sl_agreements_api + '/service/' + nsi_uuid
 
     # get current list of agreements
-    resp = requests.get(url, timeout=env.timeout)
+    resp = requests.get(url, timeout=env.timeout, headers=env.header)
+
+    env.set_return_header(resp.headers)
 
     if resp.status_code != 200:
         LOG.debug("Request returned with " + (str(resp.status_code)))
@@ -231,14 +251,16 @@ def get_detailed_agreement(sla_uuid, nsi_uuid):
     :param sla_uuid: uuid of an SLA template.
     :param nsi_uuid: uuid of a service instance.
 
-    :returns: A list. [0] is a bool with the result. [1] is a dictionary
+    :returns: A tuple. [0] is a bool with the result. [1] is a dictionary
         containing details on a single SLA agreement.
     """
     url = env.sl_agreements_api + '/' + sla_uuid + '/' + nsi_uuid
 
-    resp = requests.get(url, timeout=env.timeout)
+    resp = requests.get(url, timeout=env.timeout, headers=env.header)
     LOG.debug("SLA UUID: " + sla_uuid + "NSI UUID: " + nsi_uuid)
     LOG.debug(str(resp.text))
+
+    env.set_return_header(resp.headers)
 
     if resp.status_code == 200:
         return True, json.loads(resp.text)
@@ -251,7 +273,7 @@ def get_violations(nsi_uuid=None):
 
     :param nsi_uuid:  (Default value = None) uuid of a service instance.
 
-    :returns: A list. [0] is a bool with the result. [1] is a list of 
+    :returns: A tuple. [0] is a bool with the result. [1] is a list of 
         SLA violations associated to a service instance.
     """
 
@@ -260,7 +282,9 @@ def get_violations(nsi_uuid=None):
         url = env.sl_violations_api + '/service/' + nsi_uuid
 
     # get current list of violations
-    resp = requests.get(url, timeout=env.timeout)
+    resp = requests.get(url, timeout=env.timeout, headers=env.header)
+
+    env.set_return_header(resp.headers)
 
     if resp.status_code != 200:
         LOG.debug("Request returned with " + (str(resp.status_code)))
@@ -277,7 +301,7 @@ def get_violations_per_nsi_sla(sla_uuid, nsi_uuid):
     :param sla_uuid: uuid of SLA template.
     :param nsi_uuid: uuid of network service instance.
 
-    :returns: A list. [0] is a bool with the result. [1] is a list of 
+    :returns: A tuple. [0] is a bool with the result. [1] is a list of 
         SLA violations associated to a service instance and an SLA 
         template.
     """
@@ -285,7 +309,9 @@ def get_violations_per_nsi_sla(sla_uuid, nsi_uuid):
     url = env.sl_violations_api + '/' + sla_uuid + '/' + nsi_uuid
 
     # get current list of violations
-    resp = requests.get(url, timeout=env.timeout)
+    resp = requests.get(url, timeout=env.timeout, headers=env.header)
+
+    env.set_return_header(resp.headers)
 
     if resp.status_code != 200:
         LOG.debug("Request returned with " + (str(resp.status_code)))

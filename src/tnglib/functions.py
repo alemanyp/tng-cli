@@ -44,12 +44,16 @@ LOG = logging.getLogger(__name__)
 def get_function_descriptors():
     """Returns info on all available function descriptors.
 
-    :returns: A list. [0] is a bool with the result. [1] is a list of 
+    :returns: A tuple. [0] is a bool with the result. [1] is a list of 
         dictionaries. Each dictionary contains a descriptor.
     """
 
     # get current list of function descriptors
-    resp = requests.get(env.function_descriptor_api, timeout=env.timeout)
+    resp = requests.get(env.function_descriptor_api,
+                        timeout=env.timeout,
+                        headers=env.header)
+
+    env.set_return_header(resp.headers)
 
     if resp.status_code != 200:
         LOG.debug("Request for function descriptors returned with " +
@@ -60,6 +64,8 @@ def get_function_descriptors():
 
     functions_res = []
     for function in functions:
+        if function['platform'] == 'osm':
+            continue
         dic = {'descriptor_uuid': function['uuid'],
                'name': function['vnfd']['name'],
                'version': function['vnfd']['version'],
@@ -75,14 +81,17 @@ def get_function_descriptor(function_descriptor_uuid):
 
     :param function_descriptor_uuid: uuid of the vnfd.
 
-    :returns: A list. [0] is a bool with the result. [1] is a dictionary 
+    :returns: A tuple. [0] is a bool with the result. [1] is a dictionary 
         containing the vnfd.
     """
 
     # get function descriptor
     url = env.function_descriptor_api + '/' + function_descriptor_uuid
     resp = requests.get(url,
-                        timeout=env.timeout)
+                        timeout=env.timeout,
+                        headers=env.header)
+
+    env.set_return_header(resp.headers)
 
     if resp.status_code != 200:
         LOG.debug("Request for function descriptor returned with " +
@@ -95,12 +104,16 @@ def get_function_descriptor(function_descriptor_uuid):
 def get_function_instances():
     """Returns info on all available function instances.
 
-    :returns: A list. [0] is a bool with the result. [1] is a list of 
+    :returns: A tuple. [0] is a bool with the result. [1] is a list of 
         dictionaries. Each dictionary contains a vnfr.
     """
 
     # get current list of function instances
-    resp = requests.get(env.function_instance_api, timeout=env.timeout)
+    resp = requests.get(env.function_instance_api,
+                        timeout=env.timeout,
+                        headers=env.header)
+
+    env.set_return_header(resp.headers)
 
     if resp.status_code != 200:
         LOG.debug("Request for function instances returned with " +
@@ -126,14 +139,17 @@ def get_function_instance(function_instance_uuid):
 
     :param function_instance_uuid: uuid of the vnfr.
 
-    :returns: A list. [0] is a bool with the result. [1] is a dictionary 
+    :returns: A tuple. [0] is a bool with the result. [1] is a dictionary 
         containing a vnfr.
     """
 
     # get function intsance info
     url = env.function_instance_api + '/' + function_instance_uuid
     resp = requests.get(url,
-                        timeout=env.timeout)
+                        timeout=env.timeout,
+                        headers=env.header)
+
+    env.set_return_header(resp.headers)
 
     if resp.status_code != 200:
         LOG.debug("Request for function instance returned with " +

@@ -34,18 +34,23 @@ import requests
 import logging
 import json
 import tnglib.env as env
+from datetime import date
 
 LOG = logging.getLogger(__name__)
 
 def get_test_descriptors():
     """Returns info on all available test descriptors.
 
-    :returns: A list. [0] is a bool with the result. [1] is a list of
+    :returns: A tuple. [0] is a bool with the result. [1] is a list of
         dictionaries. Each dictionary contains a test descriptor.
     """
 
     # get current list of test descriptors
-    resp = requests.get(env.test_descriptors_api, timeout=env.timeout)
+    resp = requests.get(env.test_descriptors_api,
+                        timeout=env.timeout,
+                        headers=env.header)
+
+    env.set_return_header(resp.headers)
 
     if resp.status_code != 200:
         LOG.debug("Request for test descriptors returned with " +
@@ -82,13 +87,16 @@ def get_test_descriptor(uuid):
 
     :param uuid: uuid of test descriptor.
 
-    :returns: A list. [0] is a bool with the result. [1] is a dictionary
+    :returns: A tuple. [0] is a bool with the result. [1] is a dictionary
         containing a test descriptor.
     """
 
     url = env.test_descriptors_api + '/' + uuid
     resp = requests.get(url,
-                        timeout=env.timeout)
+                        timeout=env.timeout,
+                        headers=env.header)
+
+    env.set_return_header(resp.headers)
 
     if resp.status_code != 200:
         LOG.debug("Request for test descriptor returned with " +
@@ -96,3 +104,33 @@ def get_test_descriptor(uuid):
         return False, json.loads(resp.text)
 
     return True, json.loads(resp.text)
+
+def get_latest_succesful_test_results():
+    """Returns the latest test results, if and only if the test is in stastus PASSED and is executed within the latest 24 hours.
+
+    :param uuid: none
+
+    :returns: A tuple. [0] is a bool with the result. [1] is a dictionary
+        containing the test results metadata.
+    """
+
+    url = env.test_results_api
+    resp = requests.get(url,
+                        timeout=env.timeout,
+                        headers=env.header)
+
+    env.set_return_header(resp.headers)
+
+    if resp.status_code != 200:
+        LOG.debug("Request for test descriptor returned with " +
+                  (str(resp.status_code)))
+        return False, json.loads(resp.text)
+
+    data = json.loads(resp.text)
+    
+    match = next(d for d in data if d['status'] == 'PASSED')
+    
+    if (str(date.today()) not in match['started_at']):
+        return False, json.loads(resp.text)
+    
+    return True, match

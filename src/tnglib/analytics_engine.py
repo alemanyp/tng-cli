@@ -37,55 +37,17 @@ import tnglib.env as env
 
 LOG = logging.getLogger(__name__)
 
-def get_test_plans():
-    """Returns info on all available test plans.
 
-    :returns: A tuple. [0] is a bool with the result. [1] is a list of
-        dictionaries. Each dictionary contains a result.
-    """
+def get_analytic_services():
+    """Returns a json array with all available analytic services.
 
-    # get current list of tests results
-    resp = requests.get(env.test_plans_api,
-                        timeout=env.timeout,
-                        headers=env.header)
-
-    env.set_return_header(resp.headers)
-
-    if resp.status_code != 200:
-        LOG.debug("Request for test plans returned with " +
-                  (str(resp.status_code)))
-        return False, []
-
-    plans = json.loads(resp.text)
-
-    plans_res = []
-    for plan in plans:
-        if plan['test_result_uuid']:
-            trid = plan['test_result_uuid']
-        else:
-            trid = ""
-
-        dic = {'uuid': plan['uuid'],
-               'service_uuid': plan['service_uuid'],
-               'test_uuid': plan['test_uuid'],
-               'test_set_uuid': plan['test_set_uuid'],
-               'status': plan['test_status'],
-               'test_result_uuid': trid}
-        LOG.debug(str(dic))
-        plans_res.append(dic)
-
-    return True, plans_res
-
-def get_test_plan(uuid):
-    """Returns info on a specific test plan.
-
-    :param uuid: uuid of test plan.
+    :param uuid: none
 
     :returns: A tuple. [0] is a bool with the result. [1] is a dictionary
-        containing a test plan.
+        containing all available analytic services.
     """
 
-    url = env.test_plans_api + '/' + uuid
+    url = env.analytics_engine_api + '/list'
     resp = requests.get(url,
                         timeout=env.timeout,
                         headers=env.header)
@@ -93,8 +55,55 @@ def get_test_plan(uuid):
     env.set_return_header(resp.headers)
 
     if resp.status_code != 200:
-        LOG.debug("Request for test returned with " +
+        LOG.debug("Request for test descriptor returned with " +
                   (str(resp.status_code)))
         return False, json.loads(resp.text)
+    
+    return True, len(json.loads(resp.text))
 
-    return True, json.loads(resp.text)
+def invoke_analytic_process(testr_uuid,service_name):
+    """invoke an analytic process for a specific vnv test results uuid
+
+    :param path: testr_uuid and service_name
+
+    :returns:  a bool with the result
+    """
+
+    url = env.analytics_engine_api + '/analytic_service'
+
+    data = {'name': service_name, 'vendor':'5gtango.vnv','testr_uuid': testr_uuid,'step':'5s'}
+    resp = requests.post(url,
+                          json=data,
+                          timeout=env.timeout)
+    
+    if resp.status_code != 200:
+        LOG.debug("Request returned with " + (str(resp.status_code)))
+        return False
+
+    return True
+
+def get_analytic_results():
+    """Returns a json array with all available analytic service results.
+
+    :param uuid: none
+
+    :returns: A tuple. [0] is a bool with the result. [1] is a dictionary
+        containing all available analytic service results.
+    """
+
+    url = env.analytics_engine_api + '/results/list'
+    resp = requests.get(url,
+                        timeout=env.timeout,
+                        headers=env.header)
+
+    env.set_return_header(resp.headers)
+
+    if resp.status_code != 200:
+        LOG.debug("Request for test descriptor returned with " +
+                  (str(resp.status_code)))
+        return False, json.loads(resp.text)
+    
+    return True, len(json.loads(resp.text))
+
+
+
